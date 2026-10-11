@@ -1,0 +1,88 @@
+# GitLab CI/CD configuration for gaia-synth-spectra
+
+# Use Python 3.10 Docker image
+image: python:3.10
+
+# Define pipeline stages
+stages:
+  - test
+  - lint
+
+# Cache pip packages to speed up builds
+cache:
+  paths:
+    - .pip_cache/
+
+# Install dependencies before running jobs
+before_script:
+  - pip install --cache-dir .pip_cache/ --upgrade pip
+  # Install package with dev dependencies
+  - pip install --cache-dir .pip_cache/ -e ".[dev]"
+
+# Run unit tests
+test:
+  stage: test
+  script:
+    - pytest tests/ -v --cov=gaia_synth_spectra --cov-report=term-missing --cov-report=html
+  coverage: '/(?i)total.*? (100(?:\.0+)?\%|[1-9]?\d(?:\.\d+)?\%)$/'
+  artifacts:
+    paths:
+      - htmlcov/
+    expire_in: 1 week
+  only:
+    - main
+    - merge_requests
+    - develop
+
+# Run tests on Python 3.8
+test:py38:
+  stage: test
+  image: python:3.8
+  script:
+    - pytest tests/ -v
+  only:
+    - main
+    - merge_requests
+
+# Run tests on Python 3.9
+test:py39:
+  stage: test
+  image: python:3.9
+  script:
+    - pytest tests/ -v
+  only:
+    - main
+    - merge_requests
+
+# Run tests on Python 3.11
+test:py311:
+  stage: test
+  image: python:3.11
+  script:
+    - pytest tests/ -v
+  only:
+    - main
+    - merge_requests
+
+# Code quality - flake8
+lint:flake8:
+  stage: lint
+  script:
+    - pip install flake8
+    - flake8 gaia_synth_spectra/ --count --select=E9,F63,F7,F82 --show-source --statistics
+    - flake8 gaia_synth_spectra/ --count --max-complexity=10 --max-line-length=100 --statistics
+  allow_failure: true
+  only:
+    - main
+    - merge_requests
+
+# Code quality - pylint
+lint:pylint:
+  stage: lint
+  script:
+    - pip install pylint
+    - pylint gaia_synth_spectra/ --exit-zero --output-format=text
+  allow_failure: true
+  only:
+    - main
+    - merge_requests
