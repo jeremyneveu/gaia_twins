@@ -1,3 +1,3 @@
-"""Version information for gaia-synth-spectra."""
+"""Version information for gaia-twins."""
 
 __version__ = "0.1.0"

@@ -1,4 +1,4 @@
-"""Data management for gaia-synth-spectra."""
+"""Data management for gaia-twins."""
 
 from .cache import CacheManager
 

@@ -5,61 +5,145 @@ import pandas as pd
 from astroquery.gaia import Gaia
 from gaiaxpy import calibrate
 from tqdm import tqdm
-from typing import List, Tuple, Optional
+from typing import List, Tuple, Optional, Union
+from pathlib import Path
 
 
 class GaiaQuerier:
     """Handle queries to Gaia archive for spectra and astrophysical parameters."""
-    
-    def __init__(self, batch_size: int = 1000):
+
+    #: Cache filename (inside ``cache_dir``) for per-user astrophysical params.
+    PARAMS_CACHE_FILE = "gaia_params_cache.parquet"
+
+    def __init__(
+        self,
+        batch_size: int = 1000,
+        cache_dir: Optional[Union[str, Path]] = None,
+    ):
         """
         Initialize Gaia querier.
-        
+
         Parameters
         ----------
         batch_size : int
             Number of sources to query per batch (default: 1000)
+        cache_dir : str or Path, optional
+            If provided, astrophysical parameters fetched from Gaia are persisted
+            to ``cache_dir/gaia_params_cache.parquet`` and served from there on
+            subsequent calls for already-seen source IDs (no network query).
+            If ``None`` (default), every call queries the archive.
         """
         self.batch_size = batch_size
+        self.cache_dir = Path(cache_dir) if cache_dir else None
+        self._params_cache: Optional[pd.DataFrame] = None
+        self._params_cache_path: Optional[Path] = None
+        if self.cache_dir is not None:
+            self.cache_dir.mkdir(parents=True, exist_ok=True)
+            self._params_cache_path = self.cache_dir / self.PARAMS_CACHE_FILE
+
+    # ------------------------------------------------------------------
+    # Per-user astrophysical params cache
+    # ------------------------------------------------------------------
+    def _load_params_cache(self) -> pd.DataFrame:
+        """Lazily load (or initialise) the persisted params cache.
+
+        The cache is a DataFrame indexed by ``source_id`` with one row per
+        source per provenance family (``gspphot`` / ``gspspec``), i.e. columns
+        ``source_id, teff, logg, mh, source``.
+
+        Returns
+        -------
+        pd.DataFrame
+            The (possibly empty) cached parameters.
+        """
+        if self._params_cache is not None:
+            return self._params_cache
+        if self._params_cache_path is not None and self._params_cache_path.exists():
+            try:
+                self._params_cache = pd.read_parquet(self._params_cache_path)
+            except Exception:
+                # Corrupted / unreadable cache: start from scratch.
+                self._params_cache = pd.DataFrame(
+                    columns=["source_id", "teff", "logg", "mh", "source"]
+                )
+        else:
+            self._params_cache = pd.DataFrame(
+                columns=["source_id", "teff", "logg", "mh", "source"]
+            )
+        return self._params_cache
+
+    def _save_params_cache(self) -> None:
+        """Persist the in-memory params cache to disk (parquet)."""
+        if self._params_cache_path is not None and self._params_cache is not None:
+            self._params_cache.to_parquet(self._params_cache_path)
     
     def fetch_astrophysical_params(
-        self, 
+        self,
         source_ids: List[int],
         use_gspspec: bool = True
     ) -> pd.DataFrame:
         """
         Fetch astrophysical parameters from Gaia DR3.
-        
+
+        When a ``cache_dir`` was provided at construction, already-fetched
+        parameters are served from the local parquet cache (no network query)
+        and any newly fetched source IDs are appended to it for later calls.
+        Without a ``cache_dir`` the behaviour is unchanged (query every time).
+
         Parameters
         ----------
         source_ids : List[int]
             List of Gaia source IDs
         use_gspspec : bool
             If True, use GSP-Spec parameters, otherwise use GSP-Phot
-            
+
         Returns
         -------
         pd.DataFrame
-            DataFrame with columns: source_id, teff, logg, mh
+            DataFrame indexed by ``source_id`` with columns: teff, logg, mh
         """
         print(f"Fetching astrophysical parameters for {len(source_ids)} sources...")
-        
+
+        source_ids = [int(sid) for sid in source_ids]
+
+        use_cache = self.cache_dir is not None
+        cache = None
+        need = "gspspec" if use_gspspec else "gspphot"
+
+        served = pd.DataFrame(columns=["source_id", "teff", "logg", "mh", "source"])
+        if use_cache:
+            cache = self._load_params_cache()
+            if len(cache):
+                served = cache[cache["source"].astype(str) == need]
+                served = served[served["source_id"].isin(source_ids)].copy()
+
+        served_ids = set(served["source_id"]) if len(served) else set()
+        missing_ids = [sid for sid in source_ids if sid not in served_ids]
+
+        print(
+            f"  -> {len(served)} served from cache, "
+            f"{len(missing_ids)} to query from Gaia"
+        )
+
+        # ------------------------------------------------------------------
+        # Query the archive for the missing IDs (existing batch logic)
+        # ------------------------------------------------------------------
         all_params = []
-        total_batches = (len(source_ids) - 1) // self.batch_size + 1
-        
-        for i in range(0, len(source_ids), self.batch_size):
-            batch_ids = source_ids[i:i + self.batch_size]
+        total_batches = (len(missing_ids) - 1) // self.batch_size + 1 if missing_ids else 0
+
+        for i in range(0, len(missing_ids), self.batch_size):
+            batch_ids = missing_ids[i:i + self.batch_size]
             batch_num = i // self.batch_size + 1
-            
+
             # Convert to SQL format
             gaia_ids_str = np.array2string(
-                np.array(batch_ids), 
-                separator=',', 
+                np.array(batch_ids),
+                separator=',',
                 max_line_width=np.inf
-            )[1:-1].replace('\n ', '')
-            
+            )[1:-1].replace("\n ", "")
+
             print(f"Batch {batch_num}/{total_batches} ({len(batch_ids)} IDs)")
-            
+
             # Query parameters
             if use_gspspec:
                 table = "gaiadr3.gaia_source"
@@ -67,44 +151,71 @@ class GaiaQuerier:
             else:
                 table = "gaiadr3.astrophysical_parameters"
                 columns = "source_id, teff_gspphot, logg_gspphot, mh_gspphot"
-            
+
             qry = f"SELECT {columns} FROM {table} WHERE source_id IN ({gaia_ids_str})"
-            
+
             try:
                 job = Gaia.launch_job(qry)
                 batch_params = job.get_results().to_pandas()
-                
+
                 if len(batch_params) > 0:
                     all_params.append(batch_params)
                     print(f"  -> {len(batch_params)} results found")
                 else:
                     print(f"  -> No results found")
-                    
+
             except Exception as e:
                 print(f"  -> Error: {e}")
                 continue
-        
-        # Combine all batches
+
+        # Newly fetched batches into a standard, cache-friendly form
+        network_rows = pd.DataFrame(columns=["source_id", "teff", "logg", "mh", "source"])
         if all_params:
-            df = pd.concat(all_params, ignore_index=False)
-            
-            # Rename columns to standard names
+            net_df = pd.concat(all_params, ignore_index=False)
             if use_gspspec:
-                df = df.rename(columns={
+                net_df = net_df.rename(columns={
                     'teff_gspspec': 'teff',
                     'logg_gspspec': 'logg',
                     'mh_gspspec': 'mh'
                 })
             else:
-                df = df.rename(columns={
+                net_df = net_df.rename(columns={
                     'teff_gspphot': 'teff',
                     'logg_gspphot': 'logg',
                     'mh_gspphot': 'mh'
                 })
-            
-            df.set_index('source_id', inplace=True)
-            print(f"\nTotal: {len(df)} sources with astrophysical parameters")
-            return df
+            net_df["source"] = need
+            net_df = net_df[["source_id", "teff", "logg", "mh", "source"]]
+            network_rows = net_df
+
+        # ------------------------------------------------------------------
+        # Persist new results in the cache (if configured)
+        # ------------------------------------------------------------------
+        if use_cache and len(network_rows):
+            if len(cache):
+                cache = pd.concat([cache, network_rows], ignore_index=True)
+                cache = cache.drop_duplicates(subset=["source_id", "source"], keep="last")
+                cache = cache.reset_index(drop=True)
+            else:
+                cache = network_rows.reset_index(drop=True)
+            self._params_cache = cache
+            self._save_params_cache()
+
+        # ------------------------------------------------------------------
+        # Assemble the final result (cache + network), indexed by source_id
+        # ------------------------------------------------------------------
+        parts = []
+        if len(served):
+            parts.append(served[["source_id", "teff", "logg", "mh"]])
+        if len(network_rows):
+            parts.append(network_rows[["source_id", "teff", "logg", "mh"]])
+
+        if parts:
+            combined = pd.concat(parts, ignore_index=True)
+            combined = combined.drop_duplicates(subset=["source_id"], keep="last")
+            combined = combined.set_index("source_id")
+            print(f"\nTotal: {len(combined)} sources with astrophysical parameters")
+            return combined
         else:
             print("\nNo astrophysical parameters retrieved")
             return pd.DataFrame()

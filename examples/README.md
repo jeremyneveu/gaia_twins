@@ -1,11 +1,13 @@
 # Examples
 
-This directory contains example scripts demonstrating how to use the `gaia-synth-spectra` package.
+This directory contains example scripts demonstrating how to use the
+`gaia-twins` package.
 
 ## Files
 
-- **basic_usage.py**: Basic example showing how to generate synthetic spectra from Gaia source IDs
-- **cli_examples.py**: Examples of using the command-line interface
+- **basic_usage.py**: Python API — generate synthetic "twin" spectra from
+  Gaia source IDs by interpolating the AMBRE grid.
+- **cli_examples.py**: Documented `gaia-twins` command-line invocations.
 
 ## Running the Examples
 
@@ -16,11 +18,15 @@ cd examples/
 python basic_usage.py
 ```
 
-Make sure to update the `ambre_dir` path to point to your AMBRE data directory.
+Before running, make sure:
+- The pre-binned AMBRE grid exists
+  (`AMBRE/ambre_complete_binned_10.0A.parquet`, see
+  `scripts/rebuild_ambre_grid.py`), and
+- You update the `ambre_dir` / `parquet_path` paths to match your data.
 
 ### CLI Examples
 
-The `cli_examples.py` file contains documented command examples. To run them:
+`cli_examples.py` contains documented commands. To run one:
 
 1. Create a text file with source IDs (one per line):
 ```bash
@@ -30,7 +36,9 @@ echo "5762406957886626432" >> source_ids.txt
 
 2. Run the CLI tool:
 ```bash
-gaia-synth -i source_ids.txt -o results.pkl -a /path/to/AMBRE
+gaia-twins -i source_ids.txt \
+    --parquet AMBRE/ambre_complete_binned_10.0A.parquet \
+    -a AMBRE -o results.pkl -f pickle
 ```
 
 3. Load and inspect results:
@@ -42,7 +50,7 @@ print(results)
 
 ## Requirements
 
-Before running the examples, make sure the package is installed:
+Before running the examples, install the package:
 
 ```bash
 pip install -e ..
@@ -51,6 +59,5 @@ pip install -e ..
 ## Output
 
 The examples will generate:
-- `basic_example_spectrum.png`: Plot comparing synthetic and Gaia spectra
-- `synthetic_spectra.pkl`: DataFrame with generated spectra
-- `ambre_cache.pkl`: Cached AMBRE spectra (optional, but recommended for speed)
+- `basic_example_spectrum.png`: Plot of a generated synthetic twin spectrum
+- `synthetic_spectra.parquet`: DataFrame with generated twin spectra

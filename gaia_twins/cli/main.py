@@ -1,4 +1,4 @@
-"""Command-line interface for gaia-synth-spectra."""
+"""Command-line interface for gaia-twins."""
 
 import argparse
 import sys
@@ -6,16 +6,9 @@ import logging
 from pathlib import Path
 from typing import List, Optional
 
-import numpy as np
 import pandas as pd
 
 from ..src.spectrum_generator import SyntheticSpectrumGenerator
-from ..utils.validators import (
-    validate_source_ids,
-    validate_wavelength_range,
-    validate_output_format,
-    validate_interpolation_method
-)
 
 
 def setup_logging(verbose: bool = False):
@@ -23,278 +16,238 @@ def setup_logging(verbose: bool = False):
     level = logging.DEBUG if verbose else logging.INFO
     logging.basicConfig(
         level=level,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        datefmt='%Y-%m-%d %H:%M:%S'
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
     )
 
 
 def read_source_ids(input_file: str) -> List[int]:
     """
-    Read Gaia source IDs from file.
-    
+    Read Gaia source IDs from a text, CSV or parquet file.
+
     Supports:
     - Text files with one ID per line
-    - CSV files with 'source_id' column
-    - Parquet files with 'source_id' column
-    
-    Parameters
-    ----------
-    input_file : str
-        Path to input file
-        
+    - CSV / parquet files with a 'source_id' column
+
     Returns
     -------
     List[int]
-        List of source IDs
+        Parsed source IDs (validated).
     """
     input_path = Path(input_file)
-    
+
     if not input_path.exists():
         raise FileNotFoundError(f"Input file not found: {input_file}")
-    
+
     suffix = input_path.suffix.lower()
-    
-    if suffix == '.csv':
+
+    if suffix == ".csv":
         df = pd.read_csv(input_file)
-        if 'source_id' not in df.columns:
-            raise ValueError("CSV file must contain 'source_id' column")
-        source_ids = df['source_id'].tolist()
-        
-    elif suffix == '.parquet':
+        if "source_id" not in df.columns:
+            raise ValueError("CSV file must contain a 'source_id' column")
+        source_ids = df["source_id"].tolist()
+    elif suffix == ".parquet":
         df = pd.read_parquet(input_file)
-        if 'source_id' not in df.columns:
-            raise ValueError("Parquet file must contain 'source_id' column")
-        source_ids = df['source_id'].tolist()
-        
+        if "source_id" not in df.columns:
+            raise ValueError("Parquet file must contain a 'source_id' column")
+        source_ids = df["source_id"].tolist()
     else:
-        # Assume text file with one ID per line
-        with open(input_file, 'r') as f:
-            source_ids = [line.strip() for line in f if line.strip()]
-    
-    return validate_source_ids(source_ids)
+        with open(input_file, "r") as fh:
+            source_ids = [line.strip() for line in fh if line.strip()]
+
+    return source_ids
 
 
-def save_results(
-    results: pd.DataFrame,
-    output_file: str,
-    output_format: str
-):
+def save_results(results: pd.DataFrame, output_file: str, output_format: str) -> None:
     """
-    Save results to file.
-    
+    Save a spectra DataFrame to disk.
+
     Parameters
     ----------
     results : pd.DataFrame
-        Results DataFrame
+        DataFrame of generated spectra (indexed by ``source_id``).
     output_file : str
-        Output file path
+        Destination path.
     output_format : str
-        Output format
+        One of ``"pickle"``, ``"parquet"`` or ``"csv"``.
     """
     output_path = Path(output_file)
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    
-    format_lower = output_format.lower()
-    
-    if format_lower in ['pickle', 'pkl']:
+
+    fmt = (output_format or "parquet").lower()
+
+    if fmt in ("pickle", "pkl"):
         results.to_pickle(output_file)
-        
-    elif format_lower == 'parquet':
-        # For parquet, need to exclude array columns
-        meta_cols = [col for col in results.columns 
-                     if not col.startswith('synth_')]
-        results[meta_cols].to_parquet(output_file)
-        logging.warning(
-            "Parquet format does not support array columns. "
-            "Only metadata saved. Use pickle format to save spectra."
-        )
-        
-    elif format_lower in ['hdf5', 'h5']:
-        results.to_hdf(output_file, key='spectra', mode='w')
-        
-    elif format_lower == 'csv':
-        # For CSV, need to exclude array columns
-        meta_cols = [col for col in results.columns 
-                     if not col.startswith('synth_')]
-        results[meta_cols].to_csv(output_file, index=False)
-        logging.warning(
-            "CSV format does not support array columns. "
-            "Only metadata saved. Use pickle format to save spectra."
-        )
-    
-    logging.info(f"Results saved to {output_file}")
+    elif fmt == "parquet":
+        # Parquet supports list columns via Arrow; keep arrays for pickling.
+        try:
+            results.to_parquet(output_file, index=True)
+        except (ValueError, NotImplementedError):
+            meta_cols = [c for c in results.columns if not c.startswith("synth_")]
+            results[meta_cols].to_parquet(output_file, index=True)
+            logging.warning(
+                "Saving only metadata columns to parquet; use pickle to retain spectra."
+            )
+    elif fmt in ("csv",):
+        meta_cols = [c for c in results.columns if not c.startswith("synth_")]
+        results[meta_cols].to_csv(output_file)
+    elif fmt in ("hdf5", "h5"):
+        meta_cols = [c for c in results.columns if not c.startswith("synth_")]
+        results[meta_cols].to_hdf(output_file, key="spectra", mode="w")
+    else:
+        raise ValueError(f"Unsupported output format: {output_format}")
+
+    logging.info("Results saved to %s", output_file)
 
 
-def main():
-    """Main CLI entry point."""
+def build_parser() -> argparse.ArgumentParser:
+    """Build the command-line argument parser."""
     parser = argparse.ArgumentParser(
-        description='Generate synthetic stellar spectra from Gaia source IDs',
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter
+        prog="gaia-twins",
+        description=(
+            "Generate high-resolution synthetic 'twin' spectra for Gaia stars "
+            "from AMBRE stellar atmosphere models."
+        ),
     )
-    
-    # Input/Output
-    input_group = parser.add_mutually_exclusive_group(required=True)
-    input_group.add_argument(
-        '-i', '--input',
-        type=str,
-        help='Input file with source IDs (CSV, Parquet, or text file)'
-    )
-    input_group.add_argument(
-        '-s', '--source-ids',
-        type=str,
-        nargs='+',
-        help='Gaia source IDs (space-separated)'
-    )
-    
+
+    # Input sources
     parser.add_argument(
-        '-o', '--output',
-        type=str,
-        required=True,
-        help='Output file path'
+        "-i", "--input", type=str, default=None,
+        help="File containing Gaia source IDs (text/csv/parquet).",
     )
-    
     parser.add_argument(
-        '-f', '--format',
-        type=str,
-        default='pickle',
-        choices=['pickle', 'pkl', 'parquet', 'hdf5', 'h5', 'csv'],
-        help='Output file format'
+        "-s", "--source-ids", type=str, nargs="+", default=None,
+        help="One or more Gaia source IDs on the command line.",
     )
-    
-    # AMBRE configuration
+
+    # Output
     parser.add_argument(
-        '-a', '--ambre-dir',
-        type=str,
-        required=True,
-        help='Directory containing AMBRE ZIP files'
+        "-o", "--output", type=str, default="twin_spectra.pkl",
+        help="Output file path (default: twin_spectra.pkl).",
     )
-    
     parser.add_argument(
-        '--ambre-cache',
-        type=str,
-        default=None,
-        help='Path to AMBRE cache file (pickle)'
+        "-f", "--format", type=str, default="pickle",
+        choices=["pickle", "parquet", "csv", "hdf5"],
+        help="Output format (default: pickle).",
     )
-    
-    # Wavelength configuration
+
+    # AMBRE data
     parser.add_argument(
-        '--wave-min',
-        type=float,
-        default=330.0,
-        help='Minimum wavelength (nm)'
+        "-a", "--ambre-dir", type=str, default="AMBRE",
+        help="Directory containing AMBRE data (default: AMBRE).",
     )
-    
     parser.add_argument(
-        '--wave-max',
-        type=float,
-        default=1050.0,
-        help='Maximum wavelength (nm)'
+        "--parquet", type=str, default=None,
+        help=(
+            "Path to a pre-binned AMBRE parquet grid "
+            "(e.g. AMBRE/ambre_complete_binned_10.0A.parquet). "
+            "Recommended for speed."
+        ),
     )
-    
     parser.add_argument(
-        '--wave-step',
-        type=float,
-        default=0.5,
-        help='Wavelength step (nm)'
+        "--cache-dir", type=str, default=None,
+        help="Directory used to cache the processed AMBRE grid.",
     )
-    
+
+    # Wavelength grid (Angstroms)
+    parser.add_argument(
+        "--wave-min", type=float, default=3000.0,
+        help="Minimum wavelength for the ZIP-path grid (Angstroms, default 3000).",
+    )
+    parser.add_argument(
+        "--wave-max", type=float, default=11000.0,
+        help="Maximum wavelength for the ZIP-path grid (Angstroms, default 11000).",
+    )
+    parser.add_argument(
+        "--wave-step", type=float, default=10.0,
+        help="Wavelength bin width (Angstroms, default 10).",
+    )
+
     # Interpolation
     parser.add_argument(
-        '--interp-method',
-        type=str,
-        default='knn',
-        choices=['knn', 'kdtree'],
-        help='Interpolation method'
+        "--interp-method", type=str, default="linear",
+        choices=["linear", "nearest"],
+        help="Interpolation method (default: linear).",
     )
-    
     parser.add_argument(
-        '--n-neighbors',
-        type=int,
-        default=4,
-        help='Number of neighbors for KNN interpolation'
+        "--n-neighbors", type=int, default=None,
+        help="Deprecated; kept for compatibility (unused).",
     )
-    
+
     # Gaia query
     parser.add_argument(
-        '--batch-size',
-        type=int,
-        default=1000,
-        help='Batch size for Gaia queries'
+        "--batch-size", type=int, default=1000,
+        help="Batch size for Gaia queries (default: 1000).",
     )
-    
-    # Other options
     parser.add_argument(
-        '-v', '--verbose',
-        action='store_true',
-        help='Verbose output'
+        "--gspspec", action="store_true",
+        help="Use GSP-Spec (rather than GSP-Phot) stellar parameters.",
     )
-    
-    args = parser.parse_args()
-    
-    # Setup logging
+
+    # Other
+    parser.add_argument(
+        "-v", "--verbose", action="store_true", help="Verbose logging output.",
+    )
+
+    return parser
+
+
+def main(argv: Optional[List[str]] = None) -> int:
+    """Entry point of the gaia-twins command-line tool."""
+    parser = build_parser()
+    args = parser.parse_args(argv)
+
     setup_logging(args.verbose)
     logger = logging.getLogger(__name__)
-    
+
+    if not args.input and not args.source_ids:
+        parser.error("Provide source IDs via -i/--input or -s/--source-ids.")
+
     try:
-        # Read source IDs
+        # Resolve source IDs
         if args.input:
-            logger.info(f"Reading source IDs from {args.input}")
+            logger.info("Reading source IDs from %s", args.input)
             source_ids = read_source_ids(args.input)
         else:
-            source_ids = validate_source_ids(args.source_ids)
-        
-        logger.info(f"Processing {len(source_ids)} source IDs")
-        
-        # Validate wavelength range
-        wave_min, wave_max, wave_step = validate_wavelength_range(
-            args.wave_min, args.wave_max, args.wave_step
-        )
-        
-        # Validate output format
-        output_format = validate_output_format(args.format)
-        
-        # Validate interpolation method
-        interp_method = validate_interpolation_method(args.interp_method)
-        
-        # Create generator
-        logger.info("Initializing spectrum generator...")
+            source_ids = [int(sid) for sid in args.source_ids]
+        logger.info("Processing %d source IDs", len(source_ids))
+
+        # Build the generator and load the AMBRE grid
         generator = SyntheticSpectrumGenerator(
             ambre_dir=args.ambre_dir,
-            wavelength_min=wave_min,
-            wavelength_max=wave_max,
-            wavelength_step=wave_step,
-            interpolation_method=interp_method,
+            cache_dir=args.cache_dir,
+            interpolation_method=args.interp_method,
             n_neighbors=args.n_neighbors,
-            batch_size=args.batch_size
         )
-        
-        # Prepare AMBRE data
-        logger.info("Loading AMBRE spectra...")
-        generator.prepare_ambre(cache_file=args.ambre_cache)
-        
-        # Generate spectra
-        logger.info("Generating synthetic spectra...")
-        results = generator.generate_spectra(source_ids)
-        
-        logger.info(f"Successfully generated {len(results)} spectra")
-        
-        # Save results
-        save_results(results, args.output, output_format)
-        
-        # Print summary
-        logger.info("\nSummary:")
-        logger.info(f"  Input source IDs: {len(source_ids)}")
-        logger.info(f"  Generated spectra: {len(results)}")
-        logger.info(f"  Wavelength range: {wave_min:.1f} - {wave_max:.1f} nm")
-        logger.info(f"  Wavelength step: {wave_step:.2f} nm")
-        logger.info(f"  Output file: {args.output}")
-        
+        logger.info("Preparing AMBRE data...")
+        generator.prepare_ambre(
+            parquet_path=args.parquet,
+            wavelength_min=args.wave_min,
+            wavelength_max=args.wave_max,
+            wavelength_step=args.wave_step,
+        )
+
+        # Generate twin spectra
+        logger.info("Generating twin spectra...")
+        results = generator.generate_twins(source_ids, use_gspspec=args.gspspec)
+        logger.info("Generated %d results", len(results))
+
+        save_results(results, args.output, args.format)
+
+        # Summary
+        found = results["twin_filename"].notna().sum() if "twin_filename" in results else 0
+        logger.info("Summary:")
+        logger.info("  Input source IDs: %d", len(source_ids))
+        logger.info("  Results: %d", len(results))
+        logger.info("  Twins found: %d", found)
+        logger.info("  Output file: %s", args.output)
         return 0
-        
-    except Exception as e:
-        logger.error(f"Error: {e}", exc_info=args.verbose)
+
+    except Exception as e:  # noqa: BLE001
+        logger.error("Error: %s", e, exc_info=args.verbose)
         return 1
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     sys.exit(main())
+

@@ -48,8 +48,8 @@ def normalize_spectrum(
     # Calculate normalization factor
     if method == 'integral':
         # Match integrated flux
-        synth_integral = np.trapz(synth_flux_common, synth_wave_common)
-        gaia_integral = np.trapz(gaia_flux_common, gaia_wave_common)
+        synth_integral = np.trapezoid(synth_flux_common, x=synth_wave_common)
+        gaia_integral = np.trapezoid(gaia_flux_common, x=gaia_wave_common)
         
         if synth_integral > 0:
             norm_factor = gaia_integral / synth_integral

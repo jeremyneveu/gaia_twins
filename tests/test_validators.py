@@ -3,8 +3,7 @@
 import pytest
 import numpy as np
 
-# Direct import - conftest.py sets up the path
-from utils import validators
+from gaia_twins.utils import validators
 
 
 class TestValidateSourceIds:
@@ -55,7 +54,7 @@ class TestValidateWavelengthRange:
     
     def test_default_values(self):
         """Test with default values."""
-        wmin, wmax, wstep = validators.validators.validate_wavelength_range()
+        wmin, wmax, wstep = validators.validate_wavelength_range()
         assert wmin == 330.0
         assert wmax == 1050.0
         assert wstep == 0.5

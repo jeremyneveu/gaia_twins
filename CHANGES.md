@@ -1,70 +1,50 @@
 # Modifications Effectuées
 
-## 1. Renommage `core` → `src`
+## 1. Renommage vers `gaia_twins`
 
-Le dossier `core/` a été renommé en `src/` et tous les imports ont été mis à jour :
+Le package a été renommé de `gaia_synth_spectra` (CLI `gaia-synth`) vers
+`gaia_twins` (CLI `gaia-twins`), avec une refonte de l'interface moderne.
 
-- ✅ `gaia_synth_spectra/src/` (anciennement `core/`)
+- ✅ `gaia_twins/src/` (anciennement `core/` puis `gaia_synth_spectra/src/`)
   - `gaia_query.py`
   - `ambre_loader.py`
   - `interpolator.py`
   - `spectrum_generator.py`
+- ✅ Imports mis à jour dans `gaia_twins/__init__.py`,
+  `gaia_twins/src/__init__.py` et `gaia_twins/cli/main.py`.
+- ✅ Console script `gaia-twins = "gaia_twins.cli.main:main"` dans
+  `pyproject.toml`.
+- ✅ CLI moderne : `-i/-s/-a`, `--parquet`, `--wave-min/max/step` (Å),
+  `--interp-method linear|nearest`, `-o/-f`, `--gspspec`, `--cache-dir`.
 
-- ✅ Mis à jour les imports dans :
-  - `gaia_synth_spectra/__init__.py`
-  - `gaia_synth_spectra/src/__init__.py`
-  - `gaia_synth_spectra/cli/main.py`
+## 2. Grille AMBRE Parquet (chemin rapide)
 
-## 2. Tests Unitaires Légers
+- ✅ `scripts/rebuild_ambre_grid.py` — pipeline ZIP → binning → parquet.
+- ✅ Fichiers pré-construits : `AMBRE/ambre_complete_binned_10.0A.parquet`,
+  `AMBRE/ambre_complete_binned_1.0A.parquet`, `AMBRE/ambre_params.parquet`.
+- ✅ `AmbreLoader.load_binned_parquet` charge la grille (colonnes
+  `filename, teff, logg, mh, flux_binned, wave_binned`) et remplit le
+  catalogue, évitant la re-lecture des ~13k archives ZIP.
 
-Créé des tests pytest pour les modules utilitaires :
+## 3. Tests Unitaires
 
-- ✅ `tests/test_validators.py` (12 tests)
-  - Validation des source IDs Gaia
-  - Validation des plages de longueurs d'onde
-  - Validation des paramètres stellaires
-  - Validation des méthodes d'interpolation
-  - Validation des formats de sortie
-  - Validation de la taille des lots
+Création de tests pytest légers qui ne nécessitent pas de données AMBRE
+réelles :
 
-- ✅ `tests/test_binning.py` (15 tests)
-  - Binning spectral de base
-  - Binning avec scipy
-  - Rebinning sur nouvelle grille
-  - Binning adaptatif par SNR
-  - Cas limites
+- ✅ `tests/test_interpolator.py` (6 tests) — interpolation 4D de la grille.
+- ✅ `tests/test_ambre_loader.py` (6 tests) — chargement, binning, parquet,
+  `find_closest`.
+- ✅ `tests/test_spectrum_generator.py` (4 tests) — génération, métadonnées,
+  persistance.
 
-- ✅ `tests/test_normalization.py` (17 tests)
-  - Normalisation par intégrale/médiane/pic
-  - Facteur de normalisation AMBRE
-  - Normalisation du continuum
-  - Cas limites
+**Total : 72 tests** (dont 56 existants) — tous au vert.
 
-- ✅ `tests/conftest.py` - Configuration pytest
-- ✅ `tests/README.md` - Documentation des tests
+## 4. Configuration du package
 
-**Total : 44 tests unitaires**
-
-## 3. Intégration Continue GitLab
-
-Configuration GitLab CI pour exécution automatique des tests :
-
-- ✅ `.gitlab-ci.yml` - Configuration CI/CD
-  - Tests sur Python 3.8, 3.9, 3.10, 3.11
-  - Couverture de code avec pytest-cov
-  - Lint avec flake8 et pylint
-  - Artefacts HTML de couverture
-  - Cache des dépendances pip
-
-- ✅ `pyproject.toml` - Configuration complète du package
-  - Métadonnées du projet
-  - Dépendances et dépendances optionnelles
-  - Configuration pytest, coverage, black
-  - Scripts d'entrée (gaia-synth)
-  
-- ❌ `setup.py` - SUPPRIMÉ (redondant avec pyproject.toml)
-- ❌ `setup.cfg` - SUPPRIMÉ (redondant avec pyproject.toml)
-- ❌ `requirements.txt` - SUPPRIMÉ (redondant avec pyproject.toml)
+- ✅ `pyproject.toml` — métadonnées, dépendances (dont `[dev]`), config
+  pytest/coverage/black, console script `gaia-twins`.
+- ✅ `setup.py` / `setup.cfg` / `requirements.txt` supprimés (redondants avec
+  `pyproject.toml`).
 
 ## Exécution des Tests
 
@@ -78,84 +58,31 @@ pip install -e ".[dev]"
 pytest tests/
 
 # Avec couverture de code
-pytest tests/ --cov=gaia_synth_spectra --cov-report=html
-
-# Exécuter un fichier spécifique
-pytest tests/test_validators.py -v
+pytest tests/ --cov=gaia_twins --cov-report=html
 ```
 
-### GitLab CI
-
-Les tests s'exécutent automatiquement sur :
-- Chaque push sur `main` ou `develop`
-- Chaque merge request
-
-Stages du pipeline :
-1. **test** - Exécute les tests sur plusieurs versions Python
-2. **lint** - Vérifie la qualité du code (flake8, pylint)
-
-## Structure Finale du Package
-
-```
-gaia_synth_spectra/
-├── .gitlab-ci.yml          # CI/CD
-├── pyproject.toml          # ← Configuration complète (TOML uniquement)
-├── .gitignore
-├── LICENSE
-├── README.md
-├── CHANGES.md
-├── gaia_synth_spectra/
-│   ├── __init__.py        # ← MODIFIÉ : imports src/
-│   ├── __version__.py
-│   ├── src/               # ← RENOMMÉ : core → src
-│   │   ├── __init__.py
-│   │   ├── gaia_query.py
-│   │   ├── ambre_loader.py
-│   │   ├── interpolator.py
-│   │   └── spectrum_generator.py
-│   ├── utils/
-│   │   ├── __init__.py
-│   │   ├── binning.py
-│   │   ├── normalization.py
-│   │   └── validators.py
-│   ├── cli/
-│   │   ├── __init__.py    # ← MODIFIÉ : imports src/
-│   │   └── main.py
-│   └── data/
-├── tests/                  # ← NOUVEAU : Tests complets
-│   ├── __init__.py
-│   ├── conftest.py
-│   ├── README.md
-│   ├── test_validators.py
-│   ├── test_binning.py
-│   └── test_normalization.py
-└── examples/
-    ├── README.md
-    ├── basic_usage.py
-    └── cli_examples.py
-```
-
-## Vérification
-
-Pour vérifier que tout fonctionne :
+### CLI
 
 ```bash
-# Installer le package
-pip install -e ".[dev]"
-
-# Vérifier la structure
-ls -la gaia_synth_spectra/src/
-
-# Vérifier les imports Python
-python -c "from gaia_synth_spectra.utils import validators; print('OK')"
-
-# Exécuter les tests
-pytest tests/ -v
+gaia-twins --help
 ```
 
-## Notes
+## Structure du dépôt
 
-- Les tests sont légers et n'utilisent pas de données AMBRE réelles
-- Les tests se concentrent sur les modules `utils/` (validators, binning, normalization)
-- GitLab CI utilise des images Docker Python officielles
-- Le rapport de couverture HTML est disponible en artefact après chaque build
+```text
+gaia_twins/
+├── __init__.py
+├── cli/
+│   └── main.py
+└── src/
+    ├── ambre_loader.py
+    ├── gaia_query.py
+    ├── interpolator.py
+    └── spectrum_generator.py
+scripts/
+└── rebuild_ambre_grid.py
+tests/
+├── test_interpolator.py
+├── test_ambre_loader.py
+└── test_spectrum_generator.py
+```

@@ -3,26 +3,27 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "gaia-synth-spectra"
+name = "gaia-twins"
 version = "0.1.0"
-description = "Generate synthetic stellar spectra from Gaia IDs using AMBRE models"
+description = "Generate high-resolution synthetic stellar spectra ('twins') from Gaia source IDs using AMBRE stellar atmosphere models"
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.9"
 license = {text = "MIT"}
 authors = [
-    {name = "Jeremy Neveu", email = "jeremy.neveu@example.com"}
+    {name = "Jérémy Neveu", email = "jeremy.neveu@universite-paris-saclay.fr"}
 ]
-keywords = ["astronomy", "gaia", "spectra", "stellar-atmospheres", "ambre"]
+keywords = ["astronomy", "gaia", "spectra", "stellar-atmospheres", "ambre", "twins"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Science/Research",
     "Topic :: Scientific/Engineering :: Astronomy",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.8",
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
 ]
 
 dependencies = [
@@ -52,15 +53,25 @@ plots = [
 ]
 
 [project.scripts]
-gaia-synth = "gaia_synth_spectra.cli.main:main"
+gaia-twins = "gaia_twins.cli.main:main"
 
 [project.urls]
-Homepage = "https://github.com/sylvielsstfr/gaia-synth-spectra"
-Repository = "https://github.com/sylvielsstfr/gaia-synth-spectra"
-Documentation = "https://github.com/sylvielsstfr/gaia-synth-spectra/blob/main/README.md"
+Homepage = "https://github.com/jeremyneveu/gaia-twins"
+Repository = "https://github.com/jeremyneveu/gaia-twins"
+Documentation = "https://github.com/jeremyneveu/gaia-twins/blob/main/README.md"
+Issues = "https://github.com/jeremyneveu/gaia-twins/issues"
 
 [tool.setuptools]
-packages = ["gaia_synth_spectra", "gaia_synth_spectra.src", "gaia_synth_spectra.utils", "gaia_synth_spectra.cli", "gaia_synth_spectra.data"]
+packages = [
+    "gaia_twins",
+    "gaia_twins.src",
+    "gaia_twins.utils",
+    "gaia_twins.cli",
+    "gaia_twins.data",
+]
+
+[tool.setuptools.dynamic]
+version = {attr = "gaia_twins.__version__.__version__"}
 
 # Pytest configuration
 [tool.pytest.ini_options]
@@ -68,16 +79,11 @@ testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
-addopts = [
-    "-v",
-    "--strict-markers",
-    "--tb=short",
-    "--disable-warnings",
-]
+addopts = "-v --cov=gaia_twins --cov-report=term"
 
 # Coverage configuration
 [tool.coverage.run]
-source = ["gaia_synth_spectra"]
+source = ["gaia_twins"]
 omit = [
     "*/tests/*",
     "*/test_*",
@@ -100,11 +106,10 @@ precision = 2
 # Black configuration
 [tool.black]
 line-length = 100
-target-version = ["py38", "py39", "py310", "py311"]
+target-version = ["py39", "py310", "py311", "py312", "py313"]
 include = '\.pyi?$'
 extend-exclude = '''
 /(
-  # directories
   \.eggs
   | \.git
   | \.hg
@@ -115,28 +120,3 @@ extend-exclude = '''
   | dist
 )/
 '''
-
-[project.urls]
-Homepage = "https://github.com/sylvielsstfr/gaia-synth-spectra"
-Documentation = "https://gaia-synth-spectra.readthedocs.io"
-Repository = "https://github.com/sylvielsstfr/gaia-synth-spectra"
-Issues = "https://github.com/sylvielsstfr/gaia-synth-spectra/issues"
-
-[project.scripts]
-gaia-synth = "gaia_synth_spectra.cli.main:main"
-
-[tool.setuptools]
-packages = ["gaia_synth_spectra"]
-
-[tool.setuptools.dynamic]
-version = {attr = "gaia_synth_spectra.__version__.__version__"}
-
-[tool.black]
-line-length = 100
-target-version = ['py38', 'py39', 'py310', 'py311']
-
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-python_files = ["test_*.py"]
-python_functions = ["test_*"]
-addopts = "-v --cov=gaia_synth_spectra --cov-report=html --cov-report=term"

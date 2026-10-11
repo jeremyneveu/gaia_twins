@@ -2,79 +2,50 @@
 Example: Command-line interface usage
 ======================================
 
-This script demonstrates how to use the gaia-synth command-line tool.
+This script documents how to use the `gaia-twins` command-line tool.
 """
 
-# Example 1: Generate spectra from a text file with source IDs
-# File: source_ids.txt (one ID per line)
-# Command:
+# Example 1: Generate twins from a text file with one source ID per line.
 """
-gaia-synth -i source_ids.txt -o results.pkl -a ../AMBRE
-"""
-
-# Example 2: Generate spectra from command-line arguments
-# Command:
-"""
-gaia-synth -s 5853498713190525696 5762406957886626432 \
-    -o results.pkl -a ../AMBRE
+gaia-twins -i source_ids.txt \
+    --parquet AMBRE/ambre_complete_binned_10.0A.parquet \
+    -a AMBRE -o results.parquet -f parquet
 """
 
-# Example 3: Custom wavelength range
-# Command:
+# Example 2: Generate twins from explicit source IDs (pickle keeps arrays).
 """
-gaia-synth -i source_ids.txt -o results.pkl -a ../AMBRE \
-    --wave-min 400 --wave-max 900 --wave-step 1.0
-"""
-
-# Example 4: Use caching for faster processing
-# Command:
-"""
-gaia-synth -i source_ids.txt -o results.pkl -a ../AMBRE \
-    --ambre-cache ambre_cache.pkl
+gaia-twins -s 5853498713190525696 5762406957886626432 \
+    --parquet AMBRE/ambre_complete_binned_10.0A.parquet \
+    -a AMBRE -o results.pkl -f pickle
 """
 
-# Example 5: Different output formats
-# Pickle (includes spectra):
+# Example 3: Without a parquet grid (slow ZIP path, custom grid in Angstrom).
 """
-gaia-synth -i source_ids.txt -o results.pkl -a ../AMBRE -f pickle
-"""
-
-# Parquet (metadata only):
-"""
-gaia-synth -i source_ids.txt -o results.parquet -a ../AMBRE -f parquet
+gaia-twins -i source_ids.txt -a AMBRE -o results.parquet -f parquet \
+    --wave-min 4000 --wave-max 9000 --wave-step 10.0
 """
 
-# HDF5:
+# Example 4: Different interpolation method.
 """
-gaia-synth -i source_ids.txt -o results.h5 -a ../AMBRE -f hdf5
-"""
-
-# Example 6: Verbose output for debugging
-# Command:
-"""
-gaia-synth -i source_ids.txt -o results.pkl -a ../AMBRE -v
+gaia-twins -i source_ids.txt \
+    --parquet AMBRE/ambre_complete_binned_10.0A.parquet \
+    -a AMBRE -o results.parquet -f parquet --interp-method nearest
 """
 
-# Example 7: Process CSV file with source_id column
-# Command:
+# Example 5: Verbose output for debugging.
 """
-gaia-synth -i gaia_sources.csv -o results.pkl -a ../AMBRE
-"""
-
-# Example 8: Custom interpolation settings
-# Command:
-"""
-gaia-synth -i source_ids.txt -o results.pkl -a ../AMBRE \
-    --interp-method kdtree --n-neighbors 8
+gaia-twins -i source_ids.txt \
+    --parquet AMBRE/ambre_complete_binned_10.0A.parquet \
+    -a AMBRE -o results.parquet -f parquet --gspspec -v
 """
 
-# Example 9: Large batch processing
-# Command:
+# Example 6: Process a CSV/parquet input file with a 'source_id' column.
 """
-gaia-synth -i large_source_list.txt -o results.pkl -a ../AMBRE \
-    --batch-size 500 --ambre-cache ambre_cache.pkl -v
+gaia-twins -i gaia_sources.csv \
+    --parquet AMBRE/ambre_complete_binned_10.0A.parquet \
+    -a AMBRE -o results.parquet -f parquet
 """
 
-print("See above for example commands to run gaia-synth CLI tool")
+print("See above for example commands to run the gaia-twins CLI tool")
 print("\nFor help on all options, run:")
-print("  gaia-synth --help")
+print("  gaia-twins --help")

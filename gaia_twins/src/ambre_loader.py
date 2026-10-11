@@ -1,6 +1,7 @@
 """Load and manage AMBRE stellar atmosphere models."""
 
 import os
+import re
 import zipfile
 import numpy as np
 import pandas as pd
@@ -8,6 +9,50 @@ from pathlib import Path
 from tqdm import tqdm
 from typing import Optional, Tuple, Dict
 from scipy.interpolate import interp1d
+
+# AMBRE filenames look like:
+#   M_p3500g3.5z-0.25t1.0_a-0.10c0.00n0.00o-0.10r0.00s0.00_VIS.spec.flat.zip
+# The stellar parameters are encoded after the first "_":
+#   {p|s}{teff}g{logg}z{mh}t{alpha}
+# The leading letter is a per-file family tag: "p" for the photosphere grid
+# and "s" for the (giant/extension) grid, so we accept either.
+_AMBRE_PARAM_RE = re.compile(
+    r"[ps](?P<teff>[0-9]+)g(?P<logg>-?[0-9.]+)z(?P<mh>-?[0-9.]+)t(?P<alpha>-?[0-9.]+)"
+)
+
+
+def parse_ambre_filename(filename: str) -> Dict[str, float]:
+    """Extract stellar parameters ``teff``, ``logg``, ``mh`` from an AMBRE filename.
+
+    AMBRE files encode the parameters after the first ``_`` separator, e.g.::
+
+        M_p3500g3.5z-0.25t1.0_a-0.10c...zip  ->  teff=3500, logg=3.5, mh=-0.25
+
+    Parameters
+    ----------
+    filename : str
+        AMBRE ZIP filename.
+
+    Returns
+    -------
+    dict
+        ``{"teff": float, "logg": float, "mh": float}``.
+
+    Raises
+    ------
+    ValueError
+        If the stellar parameters cannot be parsed from the filename.
+    """
+    key = filename.split("_")[1] if "_" in filename else filename
+    match = _AMBRE_PARAM_RE.search(key)
+    if match is None:
+        raise ValueError(f"Could not parse AMBRE parameters from filename: {filename}")
+
+    return {
+        "teff": float(match.group("teff")),
+        "logg": float(match.group("logg")),
+        "mh": float(match.group("mh")),
+    }
 
 
 class AmbreLoader:
@@ -49,35 +94,17 @@ class AmbreLoader:
         
         # Parse filenames to extract stellar parameters
         catalog_data = []
-        
+
         for f in tqdm(filenames, desc="Parsing filenames"):
             try:
-                # Example filename: ambre_p6000g40z00t02.zip
-                # Format: p{teff}g{logg}z{mh}t{alpha}
-                key = f.split("_")[1].split(".")[0]
-                
-                # Extract Teff (e.g., p6000 -> 6000)
-                teff = float(key.split("g")[0][1:])
-                
-                # Extract log g (e.g., g40 -> 4.0)
-                logg = float(key.split("g")[1].split("z")[0]) / 10.0
-                
-                # Extract [M/H] (e.g., z00 -> 0.0, zm20 -> -2.0)
-                mh_str = key.split("z")[1].split("t")[0]
-                if mh_str.startswith("m"):
-                    mh = -float(mh_str[1:]) / 10.0
-                elif mh_str.startswith("p"):
-                    mh = float(mh_str[1:]) / 10.0
-                else:
-                    mh = float(mh_str) / 10.0
-                
+                params = parse_ambre_filename(f)
                 catalog_data.append({
                     'filename': f,
-                    'teff': teff,
-                    'logg': logg,
-                    'mh': mh
+                    'teff': params['teff'],
+                    'logg': params['logg'],
+                    'mh': params['mh'],
                 })
-                
+
             except (IndexError, ValueError) as e:
                 print(f"Warning: Could not parse {f}: {e}")
                 continue
@@ -270,7 +297,7 @@ class AmbreLoader:
     def save_cache(self, cache_file: str, binned_df: pd.DataFrame):
         """
         Save binned spectra to cache file.
-        
+
         Parameters
         ----------
         cache_file : str
@@ -279,14 +306,12 @@ class AmbreLoader:
             DataFrame with binned spectra
         """
         cache_path = Path(cache_file)
-        
-        if cache_path.suffix == '.parquet':
-            # Parquet doesn't support arrays, use pickle
-            print("Warning: Parquet doesn't support array columns, using pickle instead")
-            cache_path = cache_path.with_suffix('.pkl')
-        
+
         print(f"Saving cache to {cache_path}...")
-        binned_df.to_pickle(cache_path)
+        if cache_path.suffix == '.parquet':
+            binned_df.to_parquet(cache_path, index=False)
+        else:
+            binned_df.to_pickle(cache_path)
         print("Cache saved successfully")
     
     def load_cache(self, cache_file: str) -> pd.DataFrame:
@@ -316,4 +341,51 @@ class AmbreLoader:
         
         print(f"Loaded {len(df)} cached spectra")
         
+        return df
+
+    def load_binned_parquet(self, parquet_path: str) -> pd.DataFrame:
+        """
+        Load pre-binned AMBRE spectra from a parquet file.
+
+        This is the fast path used when a pre-binned grid (e.g.
+        ``AMBRE/ambre_complete_binned_10.0A.parquet``) is available, avoiding
+        the need to read and bin the ~13k raw AMBRE ZIP archives.
+
+        Parameters
+        ----------
+        parquet_path : str
+            Path to a parquet file with columns
+            ``filename, teff, logg, mh, flux_binned, wave_binned``.
+
+        Returns
+        -------
+        pd.DataFrame
+            Binned spectra with columns ``filename, teff, logg, mh,
+            flux_binned, wave_binned``.
+        """
+        parquet_path = Path(parquet_path)
+
+        if not parquet_path.exists():
+            raise FileNotFoundError(f"Binned AMBRE parquet not found: {parquet_path}")
+
+        print(f"Loading binned AMBRE spectra from {parquet_path}...")
+        df = pd.read_parquet(parquet_path)
+
+        required = {'filename', 'teff', 'logg', 'mh', 'flux_binned', 'wave_binned'}
+        missing = required - set(df.columns)
+        if missing:
+            raise ValueError(
+                f"Binned parquet {parquet_path} is missing columns: {sorted(missing)}"
+            )
+
+        # Populate the catalog from the parquet metadata
+        self.catalog = df[['filename', 'teff', 'logg', 'mh']].copy()
+
+        print(f"Loaded {len(df)} binned spectra")
+        print(
+            f"Teff {df['teff'].min():.0f}-{df['teff'].max():.0f} K, "
+            f"log g {df['logg'].min():.1f}-{df['logg'].max():.1f}, "
+            f"[M/H] {df['mh'].min():.1f}-{df['mh'].max():.1f}"
+        )
+
         return df

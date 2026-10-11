@@ -1,4 +1,4 @@
-"""Command-line interface for gaia-synth-spectra."""
+"""Command-line interface for gaia-twins."""
 
 from .main import main
 

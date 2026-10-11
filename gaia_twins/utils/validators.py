@@ -38,16 +38,15 @@ def validate_source_ids(source_ids: Union[List[str], List[int], np.ndarray]) -> 
         try:
             # Convert to int
             sid_int = int(sid)
-            
-            # Gaia DR3 source IDs are typically 19 digits
-            if sid_int <= 0:
-                raise ValueError(f"Invalid source ID: {sid} (must be positive)")
-            
-            validated_ids.append(sid_int)
-            
         except (ValueError, TypeError) as e:
             raise ValueError(f"Invalid source ID: {sid}") from e
-    
+
+        # Gaia DR3 source IDs must be strictly positive
+        if sid_int <= 0:
+            raise ValueError(f"Invalid source ID: {sid} (must be positive)")
+
+        validated_ids.append(sid_int)
+
     return validated_ids
 
 
@@ -212,7 +211,10 @@ def validate_interpolation_method(method: str) -> str:
     """
     method = method.lower()
     
-    valid_methods = ['knn', 'kdtree', 'nearest']
+    # 'nearest' (RegularGridInterpolator) is the direct equivalent of the
+    # former KNN/KD-tree nearest-neighbour schemes; all four spellings are
+    # accepted for backwards compatibility.
+    valid_methods = ['linear', 'nearest', 'knn', 'kdtree']
     
     if method not in valid_methods:
         raise ValueError(

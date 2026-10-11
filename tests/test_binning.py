@@ -2,14 +2,8 @@
 
 import pytest
 import numpy as np
-import sys
-from pathlib import Path
 
-# Add parent directory to path and import directly from module
-sys.path.insert(0, str(Path(__file__).parent.parent / 'gaia_synth_spectra'))
-
-# Import directly from binning module to avoid __init__.py imports
-from utils.binning import (
+from gaia_twins.utils.binning import (
     bin_spectrum,
     bin_spectrum_scipy,
     rebin_spectrum,
