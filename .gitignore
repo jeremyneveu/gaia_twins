@@ -81,3 +81,6 @@ venv.bak/
 ambre_cache/
 gaia_cache/
 
+# Keep the AMBRE grid bundled inside the package (tracked via git-lfs).
+!gaia_twins/data/ambre_complete_binned_10.0A.parquet
+

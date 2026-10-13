@@ -70,6 +70,9 @@ packages = [
     "gaia_twins.data",
 ]
 
+[tool.setuptools.package-data]
+"gaia_twins.data" = ["*.parquet", "*.txt"]
+
 [tool.setuptools.dynamic]
 version = {attr = "gaia_twins.__version__.__version__"}
 

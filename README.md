@@ -28,33 +28,19 @@ pip install -e ".[dev,plots]"
 
 ## Quick Start
 
-### 1. (Optional) Build a pre-binned AMBRE parquet grid
+### 1. Python API (defaults — nothing to configure)
 
-The pipeline can work directly from the raw `*.zip` files, but a pre-binned
-parquet is much faster. Build one with:
-
-```bash
-python scripts/rebuild_ambre_grid.py \
-    --ambre-dir AMBRE \
-    --output AMBRE/ambre_complete_binned_10.0A.parquet \
-    --wave-min 3000 --wave-max 11000 --wave-step 10.0
-```
-
-### 2. Python API
+Starting with `v0.1.0`, a pre-binned AMBRE grid (10 Å) is **shipped inside the
+package**, so the library works out of the box after `pip install`. No data
+folder or argument is required:
 
 ```python
 from gaia_twins import SyntheticSpectrumGenerator
 
-generator = SyntheticSpectrumGenerator(
-    ambre_dir="AMBRE",
-    interpolation_method="linear",
-)
+generator = SyntheticSpectrumGenerator()  # bundled grid is used automatically
 
-# Load the pre-binned AMBRE grid (columns: filename, teff, logg, mh,
-# flux_binned, wave_binned) and build the 4D interpolator.
-generator.prepare_ambre(
-    parquet_path="AMBRE/ambre_complete_binned_10.0A.parquet",
-)
+# Load the bundled pre-binned AMBRE grid and build the 4D interpolator.
+generator.prepare_ambre()
 
 # Generate twin spectra for a set of Gaia source IDs (GSP-Phot by default).
 results = generator.generate_twins([5853498713190525696], use_gspspec=False)
@@ -81,16 +67,38 @@ back = generator.load_spectra("results.parquet")
 info = generator.get_info()          # configuration + grid summary
 ```
 
+By default, stellar parameters fetched from Gaia are **cached** in a user-level
+directory (`~/.cache/gaia-twins`) so already-queried source IDs are served
+locally and new ones are appended automatically. Pass `cache_dir=False` to
+disable caching, or set `GAIA_TWINS_CACHE_DIR` to customise the location.
+
+### 2. Using a custom / full AMBRE grid
+
+If you keep the full AMBRE archive (ZIPs or your own pre-binned parquet),
+point the library at it — either via env var or explicit arguments:
+
+```bash
+export GAIA_TWINS_AMBRE_DIR=/path/to/AMBRE
+```
+
+```python
+generator = SyntheticSpectrumGenerator(ambre_dir="/path/to/AMBRE")
+generator.prepare_ambre(parquet_path="/path/to/AMBRE/ambre_complete_binned_10.0A.parquet")
+```
+
+The full raw grid can be rebuilt with `scripts/rebuild_ambre_grid.py`
+(see [Rebuilding the AMBRE grid](#rebuilding-the-ambre-grid)).
+
 ### 3. Command-line interface
 
 ```bash
-gaia-twins -i source_ids.txt -o results.parquet -f parquet \
-    --parquet AMBRE/ambre_complete_binned_10.0A.parquet -a AMBRE
+# Works out of the box (bundled grid used automatically)
+gaia-twins -i source_ids.txt -o results.parquet -f parquet
 
-# From explicit source IDs
+# From explicit source IDs, with a custom AMBRE directory
 gaia-twins -s 5853498713190525696 5762406957886626432 \
-    --parquet AMBRE/ambre_complete_binned_10.0A.parquet \
-    -o results.pkl -f pickle -a AMBRE
+    -a /path/to/AMBRE --parquet /path/to/AMBRE/ambre_complete_binned_10.0A.parquet \
+    -o results.pkl -f pickle
 ```
 
 Key options:
@@ -98,8 +106,8 @@ Key options:
 ```
   -i, --input FILE        Input file with source IDs (text, CSV or parquet)
   -s, --source-ids ID...  Gaia source IDs (space-separated)
-  -a, --ambre-dir DIR     Directory containing AMBRE ZIP files
-      --parquet FILE      Pre-binned AMBRE parquet grid (recommended)
+  -a, --ambre-dir DIR     Directory containing AMBRE ZIP files (default: bundled grid)
+      --parquet FILE      Pre-binned AMBRE parquet grid (default: bundled grid)
   -o, --output FILE       Output file (default: twin_spectra.pkl)
   -f, --format FMT        pickle | parquet | csv | hdf5 (default: pickle)
       --wave-min FLOAT    Min wavelength for the ZIP path (Å, default 3000)
@@ -107,11 +115,19 @@ Key options:
       --wave-step FLOAT   Bin width for the ZIP path (Å, default 10)
       --interp-method M   linear | nearest (default: linear)
       --gspspec           Use GSP-Spec instead of GSP-Phot parameters
-      --cache-dir DIR     Directory for AMBRE grid caching
+      --cache-dir DIR     Directory for AMBRE grid + Gaia params caching
   -v, --verbose           Verbose logging
 ```
 
 > **Note:** `gaia-twins --help` lists the authoritative set of options.
+
+### Environment variables
+
+| Variable | Purpose |
+|----------|---------|
+| `GAIA_TWINS_AMBRE_DIR` | Directory holding a full AMBRE grid (overrides the bundled data) |
+| `GAIA_TWINS_DATA_DIR`  | Alternative override for the AMBRE data directory |
+| `GAIA_TWINS_CACHE_DIR` | Directory used for the persistent cache |
 
 ## Command API summary
 

@@ -106,8 +106,30 @@ class TestFetchAstrophysicalParamsCache:
 
         monkeypatch_launch(counting_launch)
 
-        querier = GaiaQuerier()  # no cache_dir
+        querier = GaiaQuerier(cache_dir=False)  # caching explicitly disabled
         querier.fetch_astrophysical_params([55555])
         querier.fetch_astrophysical_params([55555])
 
         assert len(calls) == 2  # queried every time
+
+    def test_default_cache_dir_persists_new_ids(self, monkeypatch, tmp_path, monkeypatch_launch):
+        # Default construction (no cache_dir) now uses a user-level cache, so
+        # newly queried IDs are persisted — the regression the user reported.
+        monkeypatch.setattr(
+            "gaia_twins.src.gaia_query.get_default_cache_dir", lambda: tmp_path
+        )
+        monkeypatch_launch(lambda qry: make_gaia_result([77777], [6100.0], [4.1], [0.0]))
+
+        querier = GaiaQuerier()  # no cache_dir -> default cache is used
+        params = querier.fetch_astrophysical_params([77777])
+
+        assert 77777 in params.index
+        cached = pd.read_parquet(tmp_path / GaiaQuerier.PARAMS_CACHE_FILE)
+        assert set(cached["source_id"]) == {77777}
+
+        # A second querier (fresh instance / new run) serves from the cache.
+        monkeypatch_launch(
+            lambda qry: (_ for _ in ()).throw(AssertionError("should not query"))
+        )
+        params2 = GaiaQuerier().fetch_astrophysical_params([77777])
+        assert 77777 in params2.index

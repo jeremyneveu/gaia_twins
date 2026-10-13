@@ -16,6 +16,7 @@ from .gaia_query import GaiaQuerier
 from .ambre_loader import AmbreLoader
 from .interpolator import AmbreInterpolator
 from ..utils.normalization import normalize_spectrum
+from ..data.defaults import DEFAULT_AMBRE_BINNED, get_default_ambre_dir, get_default_cache_dir
 
 # Regular-grid interpolation methods supported by scipy.
 _VALID_METHODS = ("linear", "nearest")
@@ -31,11 +32,17 @@ class SyntheticSpectrumGenerator:
 
     Parameters
     ----------
-    ambre_dir : str
+    ambre_dir : str, optional
         Directory containing the AMBRE data (ZIP files or a pre-binned
-        parquet grid).
-    cache_dir : str, optional
-        Directory used to persist processed AMBRE grids across runs.
+        parquet grid). When ``None`` (default), the pre-binned grid shipped
+        with the package is used, so the library works out of the box after
+        installation. Override with ``GAIA_TWINS_AMBRE_DIR`` or by passing an
+        explicit directory.
+    cache_dir : str or bool, optional
+        Directory used to persist processed AMBRE grids and fetched Gaia
+        parameters across runs. When ``None`` (default) a user-level cache is
+        used (see :func:`get_default_cache_dir`), so newly queried source IDs
+        are automatically cached. Pass ``False`` to disable caching entirely.
     interpolation_method : str
         Interpolation scheme: ``"linear"`` (default) or ``"nearest"``.
     n_neighbors : int, optional
@@ -45,8 +52,8 @@ class SyntheticSpectrumGenerator:
 
     def __init__(
         self,
-        ambre_dir: str = "AMBRE",
-        cache_dir: Optional[str] = None,
+        ambre_dir: Optional[str] = None,
+        cache_dir: Optional[Union[str, bool]] = None,
         interpolation_method: str = "linear",
         n_neighbors: Optional[int] = None,
     ):
@@ -62,13 +69,28 @@ class SyntheticSpectrumGenerator:
                 )
             )
 
+        if ambre_dir is None:
+            ambre_dir = get_default_ambre_dir()
         self.ambre_dir = Path(ambre_dir)
-        self.cache_dir = Path(cache_dir) if cache_dir else None
+
+        # cache_dir=None -> a user-level default is used so caching is ON by
+        # default; cache_dir=False disables caching entirely.
+        if cache_dir is False:
+            self.cache_dir: Optional[Path] = None
+        elif cache_dir is None:
+            self.cache_dir = get_default_cache_dir()
+        else:
+            self.cache_dir = Path(cache_dir)
         self.interpolation_method = method
         self.n_neighbors = n_neighbors
 
         # Components
-        self.gaia_querier = GaiaQuerier(cache_dir=self.cache_dir)
+        # When caching is disabled at this level (self.cache_dir is None), pass
+        # the explicit False sentinel through so the querier doesn't silently
+        # re-enable the default user-level cache.
+        self.gaia_querier = GaiaQuerier(
+            cache_dir=False if self.cache_dir is None else self.cache_dir
+        )
         self.ambre_loader = AmbreLoader(str(self.ambre_dir))
         self.interpolator: Optional[AmbreInterpolator] = None
 
@@ -99,15 +121,19 @@ class SyntheticSpectrumGenerator:
         * **Pre-binned parquet** (recommended): pass ``parquet_path`` pointing
           at a file (e.g. ``AMBRE/ambre_complete_binned_10.0A.parquet``) with
           columns ``filename, teff, logg, mh, flux_binned, wave_binned``. This
-          avoids reading the ~13k raw AMBRE ZIP archives.
-        * **Raw ZIP archives**: when ``parquet_path`` is ``None`` the AMBRE
-          directory is scanned for ``*.zip`` files, each binned onto the
-          wavelength grid defined by ``wavelength_min/max/step``.
+          avoids reading the ~13k raw AMBRE ZIP archives. When ``parquet_path``
+          is ``None`` and the directory contains the pre-binned grid shipped
+          with the package, that bundled grid is used automatically.
+        * **Raw ZIP archives**: when ``parquet_path`` is ``None`` (and no
+          bundled grid is found) the AMBRE directory is scanned for ``*.zip``
+          files, each binned onto the wavelength grid defined by
+          ``wavelength_min/max/step``.
 
         Parameters
         ----------
         parquet_path : str, optional
-            Path to a pre-binned parquet grid. When provided,
+            Path to a pre-binned parquet grid. When ``None`` (default) the grid
+            bundled with the package is used if available. When provided,
             ``wavelength_min/max/step`` are ignored in favour of the grid
             stored inside the file.
         wavelength_min : float
@@ -126,6 +152,14 @@ class SyntheticSpectrumGenerator:
         pd.DataFrame
             The prepared, binned AMBRE grid.
         """
+        if parquet_path is None:
+            # If the AMBRE directory holds the pre-binned grid shipped with
+            # the package (default install), use it as the fast path so that
+            # ``prepare_ambre()`` works with no arguments.
+            bundled = self.ambre_dir / DEFAULT_AMBRE_BINNED
+            if bundled.exists():
+                parquet_path = str(bundled)
+
         if parquet_path is not None:
             self.ambre_binned = self.ambre_loader.load_binned_parquet(
                 str(parquet_path)

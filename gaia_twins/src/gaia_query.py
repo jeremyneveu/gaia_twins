@@ -8,6 +8,8 @@ from tqdm import tqdm
 from typing import List, Tuple, Optional, Union
 from pathlib import Path
 
+from ..data.defaults import get_default_cache_dir
+
 
 class GaiaQuerier:
     """Handle queries to Gaia archive for spectra and astrophysical parameters."""
@@ -18,7 +20,7 @@ class GaiaQuerier:
     def __init__(
         self,
         batch_size: int = 1000,
-        cache_dir: Optional[Union[str, Path]] = None,
+        cache_dir: Optional[Union[str, Path, bool]] = None,
     ):
         """
         Initialize Gaia querier.
@@ -27,14 +29,22 @@ class GaiaQuerier:
         ----------
         batch_size : int
             Number of sources to query per batch (default: 1000)
-        cache_dir : str or Path, optional
-            If provided, astrophysical parameters fetched from Gaia are persisted
-            to ``cache_dir/gaia_params_cache.parquet`` and served from there on
-            subsequent calls for already-seen source IDs (no network query).
-            If ``None`` (default), every call queries the archive.
+        cache_dir : str, Path or bool, optional
+            If provided (a path), astrophysical parameters fetched from Gaia
+            are persisted to ``cache_dir/gaia_params_cache.parquet`` and served
+            from there on subsequent calls for already-seen source IDs (no
+            network query). When ``None`` (default) a user-level cache is used
+            (see :func:`get_default_cache_dir`), so newly queried source IDs
+            are automatically cached. Pass ``False`` to disable caching and
+            query the archive every time.
         """
         self.batch_size = batch_size
-        self.cache_dir = Path(cache_dir) if cache_dir else None
+        if cache_dir is False:
+            self.cache_dir: Optional[Path] = None
+        elif cache_dir is None:
+            self.cache_dir = get_default_cache_dir()
+        else:
+            self.cache_dir = Path(cache_dir)
         self._params_cache: Optional[pd.DataFrame] = None
         self._params_cache_path: Optional[Path] = None
         if self.cache_dir is not None:

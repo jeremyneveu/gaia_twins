@@ -12,6 +12,12 @@ from .src.spectrum_generator import SyntheticSpectrumGenerator
 from .src.interpolator import AmbreInterpolator
 from .src.ambre_loader import AmbreLoader, parse_ambre_filename
 from .src.gaia_query import GaiaQuerier
+from .data.defaults import (
+    DEFAULT_AMBRE_BINNED,
+    get_default_ambre_data_path,
+    get_default_ambre_dir,
+    get_default_cache_dir,
+)
 from .utils.binning import (
     bin_spectrum,
     bin_spectrum_scipy,
@@ -28,6 +34,10 @@ __all__ = [
     "AmbreLoader",
     "parse_ambre_filename",
     "GaiaQuerier",
+    "DEFAULT_AMBRE_BINNED",
+    "get_default_ambre_data_path",
+    "get_default_ambre_dir",
+    "get_default_cache_dir",
     "bin_spectrum",
     "bin_spectrum_scipy",
     "rebin_spectrum",

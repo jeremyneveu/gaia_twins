@@ -10,6 +10,8 @@ from tqdm import tqdm
 from typing import Optional, Tuple, Dict
 from scipy.interpolate import interp1d
 
+from ..data.defaults import get_default_ambre_dir
+
 # AMBRE filenames look like:
 #   M_p3500g3.5z-0.25t1.0_a-0.10c0.00n0.00o-0.10r0.00s0.00_VIS.spec.flat.zip
 # The stellar parameters are encoded after the first "_":
@@ -58,15 +60,20 @@ def parse_ambre_filename(filename: str) -> Dict[str, float]:
 class AmbreLoader:
     """Load AMBRE stellar spectra from ZIP archives."""
     
-    def __init__(self, ambre_dir: str = "AMBRE"):
+    def __init__(self, ambre_dir: Optional[str] = None):
         """
         Initialize AMBRE loader.
         
         Parameters
         ----------
-        ambre_dir : str
-            Directory containing AMBRE ZIP files
+        ambre_dir : str, optional
+            Directory containing AMBRE files (ZIP archives or a pre-binned
+            parquet grid). When ``None``, defaults to the data directory
+            shipped with the package (see :func:`get_default_ambre_dir`),
+            which lets the library work out of the box after installation.
         """
+        if ambre_dir is None:
+            ambre_dir = get_default_ambre_dir()
         self.ambre_dir = Path(ambre_dir)
         self.catalog = None
         

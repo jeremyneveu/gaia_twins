@@ -16,19 +16,16 @@ source_ids = [
     5762406957886626432,  # Example source 2
 ]
 
-# Initialize the spectrum generator.
+# Initialize the spectrum generator. The pre-binned AMBRE grid is shipped
+# with the package, so no data path or arguments are required.
 print("Initializing spectrum generator...")
-generator = SyntheticSpectrumGenerator(
-    ambre_dir="AMBRE",
-    interpolation_method="linear",
-)
+generator = SyntheticSpectrumGenerator(interpolation_method="linear")
 
-# Load the pre-binned AMBRE grid and build the 4D interpolator.
-# (See scripts/rebuild_ambre_grid.py to create the parquet file.)
+# Load the bundled pre-binned AMBRE grid and build the 4D interpolator.
+# (Point the generator at your own AMBRE directory with ambre_dir=... /
+# parquet_path=... if you keep the full grid elsewhere.)
 print("Loading AMBRE grid...")
-generator.prepare_ambre(
-    parquet_path="AMBRE/ambre_complete_binned_10.0A.parquet"
-)
+generator.prepare_ambre()
 
 # Generate twin spectra (query Gaia, interpolate, match closest AMBRE model).
 print(f"Generating twin spectra for {len(source_ids)} sources...")

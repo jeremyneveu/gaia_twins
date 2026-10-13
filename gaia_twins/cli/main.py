@@ -133,20 +133,25 @@ def build_parser() -> argparse.ArgumentParser:
 
     # AMBRE data
     parser.add_argument(
-        "-a", "--ambre-dir", type=str, default="AMBRE",
-        help="Directory containing AMBRE data (default: AMBRE).",
+        "-a", "--ambre-dir", type=str, default=None,
+        help=(
+            "Directory containing AMBRE data (ZIP files). Defaults to the "
+            "pre-binned grid shipped with the package."
+        ),
     )
     parser.add_argument(
         "--parquet", type=str, default=None,
         help=(
-            "Path to a pre-binned AMBRE parquet grid "
-            "(e.g. AMBRE/ambre_complete_binned_10.0A.parquet). "
-            "Recommended for speed."
+            "Path to a pre-binned AMBRE parquet grid. Defaults to the grid "
+            "bundled with the package when available. Recommended for speed."
         ),
     )
     parser.add_argument(
         "--cache-dir", type=str, default=None,
-        help="Directory used to cache the processed AMBRE grid.",
+        help=(
+            "Directory used to cache the processed AMBRE grid and fetched Gaia "
+            "parameters (default: user cache)."
+        ),
     )
 
     # Wavelength grid (Angstroms)
